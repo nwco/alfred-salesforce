@@ -142,7 +142,11 @@ def main(wf):
         sf = salesforce_api.Salesforce(wf, access_token, refresh_token, instance_url)
 
         results = sf.api_call('/services/data/v40.0/search/', parameters={
-            'q': "FIND {%s} IN ALL FIELDS RETURNING Case (Id, CaseNumber, Subject Order by CaseNumber desc), Account (Id, Name, Type), Opportunity (Id, Name, StageName, CloseDate), Contact (Id, Name, Email), Lead (Id, Name) WITH METADATA='LABELS' " % query.replace("\\", "\\\\").replace("'", "\\'")
+            #'q': "SELECT Id, AccountId, Account.Name, Description FROM Case WHERE CaseNumber LIKE '00%s'" % query.replace("\\", "\\\\").replace("'", "\\'")
+            'q': "FIND {%s} IN ALL FIELDS RETURNING Case (Id, CaseNumber, AccountId, Description, Subject Order by CaseNumber desc) WITH METADATA='LABELS' " % query.replace("\\", "\\\\").replace("'", "\\'")
+            # ORIGINAL QUERY
+            ##'q': "FIND {%s} IN ALL FIELDS RETURNING Case (Id, CaseNumber, AccountId, Description, Subject Order by CaseNumber desc), Account (Id, Name, Type), Opportunity (Id, Name, StageName, CloseDate), Contact (Id, Name, Email), Lead (Id, Name) WITH METADATA='LABELS' " % query.replace("\\", "\\\\").replace("'", "\\'")
+            # 'q': "FIND {%s} IN ALL FIELDS" % query.replace("\\", "\\\\").replace("'", "\\'")
         })
 
         for r in results.get('searchRecords', []):
@@ -166,17 +170,33 @@ def main(wf):
                 url = get_object_url(instance_url, r.get("Id"), use_classic)
                 ico = './lead.png'
             elif r.get("attributes").get("type") == "Case":
-                sub = r.get("Type")
+                acctid = "'" + r.get("AccountId", "") + "'"
+                acctnameresponse = sf.api_call('/services/data/v40.0/query/', parameters={
+                    # 'q': "SELECT Id, Name FROM Account where Id = %s" % acctid
+                    'q': "SELECT Name FROM Account where Id = %s" % acctid
+                })
+                acctname = acctnameresponse.get("records")[0].get("Name")
+                sub = r.get("attributes").get("type") + " for " + acctname
                 url = get_object_url(instance_url, r.get("Id"), use_classic)
                 ico = './case.png'
 
-            wf.add_item(
-                title="%s (%s)" % (r.get("Name"), r.get("attributes").get("type")),
-                subtitle=sub,
-                arg=url,
-                valid=True,
-                icon=ico
-            )
+            if sub == "Case":
+                wf.add_item(
+                    title="%s (%s)" % (r.get("CaseNumber"), r.get("attributes").get("type")),
+                    subtitle=sub,
+                    arg=url,
+                    valid=True,
+                    icon=ico
+                )
+
+            else:
+                wf.add_item(
+                    title="%s (%s)" % (r.get("Name"), r.get("attributes").get("type")),
+                    subtitle=sub,
+                    arg=url,
+                    valid=True,
+                    icon=ico
+                )
 
         if (len(results.get('searchRecords', []))) == 0:
             wf.add_item(
